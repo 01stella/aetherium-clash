@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 
@@ -7,22 +7,46 @@ CORS(app)
 app.config['SECRET_KEY'] = 'your_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+connected_players = {}
+
+
 @app.route('/')
 def index():
     return "Welcome to Aetherium Clash Backend!"
 
 @socketio.on('connect')
-def test_connect():
-    print('Client connected')
-    emit('response', {'message': 'Connected to Aetherium Clash Backend!'}
-    )
+def handle_connect():
+    session_id = request.sid
+
+    if len(connected_players) == 0:
+        role = 'Player1'
+    elif len(connected_players) == 1:
+        role = 'Player2'
+    else:
+        role = 'Spectator'
+
+    connected_players[session_id] = role
+
+    print(f"{session_id} connected as {role}")
+    print(f"Current connected players: {connected_players}")
+
+    emit('role_assignment', {'role': role, 'message': f'You are assigned the role: {role}'}, room=session_id)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    session_id = request.sid
+    if session_id in connected_players:
+        role = connected_players.pop(session_id)
+        print(f"{session_id} disconnected from role {role}")
+        print(f"Current connected players: {connected_players}")
 
 @socketio.on('player_action')
 def handle_player_action(data):
-    print(f"Received player action: {data}")
-    # Process the player action and update game state accordingly
-    # For example, you can broadcast the updated game state to all clients
-    emit('game_update', {'message': 'Game state updated!'}, broadcast=True)
+    session_id = request.sid
+    user_role = connected_players.get(session_id, 'Unknown')
 
+    print(f"Received action from {user_role} ({session_id}): {data}")
+    emit('game_update', {'message': f'{user_role} performed an action: {data}'}, broadcast=True)
+    
 if __name__ == '__main__':
     socketio.run(app, debug=True, port=5000)

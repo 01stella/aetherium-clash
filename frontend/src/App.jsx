@@ -5,12 +5,12 @@ import { io } from 'socket.io-client';
 const socket = io('http://localhost:5000');
 
 function App() {
-  const [message, setMessage] = useState('');
+  const [playerRole, setPlayerRole] = useState('Connecting...')
   const [logs, setLogs] = useState([])
 
   useEffect(() => {
-    socket.on('response', (data) => {
-      setMessage(data.message)
+    socket.on('role_assignment', (data) => {
+      setPlayerRole(data.role)
     })
 
     socket.on('game_update', (data) => {
@@ -19,7 +19,7 @@ function App() {
 
     // Clean up the socket connection on unmount
     return () => {
-      socket.off('response')
+      socket.off('role_assignment')
       socket.off('game_update')
     }
   }, [])
@@ -31,9 +31,11 @@ function App() {
   return (
     <div style={{ padding: '20px' }}>
       <h1>Aetherium Clash</h1>
-      <p> Status: {message}</p>
+      <p> Role: {playerRole}</p>
 
-      <button onClick={handleAttack}>Attack</button>
+      {playerRole !== 'Spectator' && (
+        <button onClick={handleAttack}>Attack</button>
+      )}
 
       <h2 style={{ marginTop: '20px' }}>Battle Logs:</h2>
       <ul style={{ background: '#f0f0f0', padding: '10px', borderRadius: '5px', listStyleType: 'none', color: 'black' }}>
