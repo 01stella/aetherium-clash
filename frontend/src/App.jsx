@@ -28,13 +28,26 @@ function App() {
     socket.emit('player_action', { attackType: 'Basic Attack' })
   }
 
+  const handleSelectCharacter = (character) => {
+    socket.emit('character_selection', { character })
+  };
+
   return (
     <div style={{ padding: '20px' }}>
       <h1>Aetherium Clash</h1>
       <p> Role: {playerRole}</p>
-
+    
       {playerRole !== 'Spectator' && (
-        <button onClick={handleAttack}>Attack</button>
+        <div style={{ marginBottom: '20px' }}>
+          <h2>Select Your Character:</h2>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <button onClick={() => handleSelectCharacter('Aha')}>Aha</button>
+            <button onClick={() => handleSelectCharacter('Lan')}>Lan</button>
+            <button onClick={() => handleSelectCharacter('Yaoshi')}>Yaoshi</button>
+          </div>
+          
+          <button onClick={handleAttack}>Attack</button>
+        </div>
       )}
 
       <h2 style={{ marginTop: '20px' }}>Battle Logs:</h2>
