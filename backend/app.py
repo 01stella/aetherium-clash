@@ -18,9 +18,11 @@ def index():
 def handle_connect():
     session_id = request.sid
 
-    if len(connected_players) == 0:
+    active_roles = connected_players.values()
+
+    if 'Player1' not in active_roles:
         role = 'Player1'
-    elif len(connected_players) == 1:
+    elif 'Player2' not in active_roles:
         role = 'Player2'
     else:
         role = 'Spectator'
@@ -47,6 +49,6 @@ def handle_player_action(data):
 
     print(f"Received action from {user_role} ({session_id}): {data}")
     emit('game_update', {'message': f'{user_role} performed an action: {data}'}, broadcast=True)
-    
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, port=5000)
