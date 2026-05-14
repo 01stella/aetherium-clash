@@ -137,5 +137,15 @@ def handle_wager(data):
             # Clear the vault for the next round
             current_wagers.clear()
 
+@socketio.on('reset_game')
+def handle_reset_game():
+    print("Resetting game state...")
+    # Reset game state variables here
+    player_characters.clear()
+    current_hp.clear()
+    current_wagers.clear()
+
+    emit ('game_reset', {'message': 'Game state has been reset!'}, broadcast=True)
+    
 if __name__ == '__main__':
     socketio.run(app, debug=True, port=5000)

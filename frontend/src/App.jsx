@@ -34,12 +34,19 @@ function App() {
       setWinner(data.message.split('!')[0]) // Extract the winner's name
     })
 
+    socket.on('game_reset', () => {
+      setGameStarted(false)
+      setLockedCharacter(null)
+      setWinner(null)
+      setLogs([])
+    })
     // Clean up the socket connection on unmount
     return () => {
       socket.off('role_assignment')
       socket.off('game_update')
       socket.off('match_start')
       socket.off('match_end')
+      socket.off('game_reset')
     }
   }, [])
 
@@ -51,6 +58,10 @@ function App() {
     socket.emit('character_selection', { character })
     setLockedCharacter(character)
   };
+
+  const handleResetGame = () => {
+    socket.emit('reset_game')
+  }
 
   return (
     <div style={{ padding: '20px' }}>
@@ -91,6 +102,7 @@ function App() {
         <div style={{ marginBottom: '20px' }}>
           <h2>Game Over</h2>
           <p>The winner is: <strong style={{ color: 'green' }}>{winner}</strong></p>
+          <button onClick={handleResetGame}>Reset Game</button>
         </div>
       )}
 
