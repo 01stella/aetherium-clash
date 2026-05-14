@@ -11,6 +11,8 @@ function App() {
   const [gameStarted, setGameStarted] = useState(false)
   const [lockedCharacter, setLockedCharacter] = useState(null)
   const [winner, setWinner] = useState(null)
+  const [currentTurn, setCurrentTurn] = useState(null)
+  const [wagerLocked, setWagerLocked] = useState(false)
 
   useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -20,6 +22,17 @@ function App() {
     socket.on('role_assignment', (data) => {
       setPlayerRole(data.role)
     })
+
+    socket.on('turn_start', (data) => {
+      setCurrentTurn(data.turn)
+      setWagerLocked(false) // Unlock wagers at the start of each turn
+    })
+
+    socket.on('wager_reset', () => {
+      setCurrentTurn(null)
+      setWagerLocked(false) // Unlock wagers when they are reset
+    })
+
 
     socket.on('game_update', (data) => {
       setLogs((prevLogs) => [...prevLogs, data.message])
@@ -47,6 +60,8 @@ function App() {
       socket.off('match_start')
       socket.off('match_end')
       socket.off('game_reset')
+      socket.off('turn_start')
+      socket.off('wager_reset')
     }
   }, [])
 
@@ -92,10 +107,39 @@ function App() {
       {/* COMBAT PHASE */}
       {playerRole !== 'Spectator' && gameStarted && !winner && (
         <div style={{ marginBottom: '20px' }}>
-          <h2>Combat Phase</h2>
-          <button onClick={handleAttack}>Basic Attack</button>
-        </div>
-      )}
+          
+          {/* PHASE 1: RPS */}
+          {!currentTurn && (
+            <div>
+              <h2>Rock, Paper, Scissors Phase</h2>
+              {wagerLocked ? (
+                <p>Waiting for opponent to make a move...</p>
+              ) : (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => { socket.emit('submit_wager', { wager: 'Rock' }); setWagerLocked(true); }}>Rock</button>
+                  <button onClick={() => { socket.emit('submit_wager', { wager: 'Paper' }); setWagerLocked(true); }}>Paper</button>
+                  <button onClick={() => { socket.emit('submit_wager', { wager: 'Scissors' }); setWagerLocked(true); }}>Scissors</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PHASE 2: WON RPS, GAIN TURN */}
+        {currentTurn === playerRole && (
+          <div>
+            <h2>You won the RPS! You gain a turn.</h2>
+            <button onClick={handleAttack}>Basic Attack</button>
+          </div>
+        )}
+
+        {/* PHASE 3: LOST RPS */}
+        {currentTurn && currentTurn !== playerRole && (
+          <div>
+            <h2>You lost the RPS. Opponent's turn.</h2>
+          </div>
+        )}
+      </div>
+    )}
 
       {/* GAMEOVER PHASE */}
       {winner && (

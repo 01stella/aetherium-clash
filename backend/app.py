@@ -13,10 +13,10 @@ player_characters = {} # tracks who picks what character
 current_wagers = {} # RPS choice tracker
 current_hp = {}
 
-CHARACTER_STATS = {
-    'Aha': {'hp': 1000, 'dmg': 130, 'speed': 60},
-    'Lan': {'hp': 1250, 'dmg': 100, 'speed': 80},
-    'Yaoshi': {'hp': 1800, 'dmg': 80, 'speed': 40},
+CHARACTER_STATS = { # for testing purposes hp is lowered
+    'Aha': {'hp': 400, 'dmg': 130, 'speed': 60}, # original hp 1000
+    'Lan': {'hp': 550, 'dmg': 100, 'speed': 80}, # original hp 1250
+    'Yaoshi': {'hp': 700, 'dmg': 80, 'speed': 40}, # original hp 1800
 }
 
 
@@ -87,6 +87,44 @@ def handle_character_selection(data):
     else:
         print(f"{user_role} attempted to select a character, but is not a player.")
 
+
+@socketio.on('submit_wager')
+def handle_wager(data):
+    session_id = request.sid
+    user_role = connected_players.get(session_id, 'Unknown')
+    
+    if user_role in ['Player1', 'Player2']:
+        wager = data.get('wager') # 'Rock', 'Paper', or 'Scissors'
+        
+        # Save their bet in the vault
+        current_wagers[user_role] = wager
+        # Tell their specific frontend that the bet was received
+        emit('wager_received', {'message': f'Wager {wager} locked! Waiting for opponent...'}, to=session_id)
+        
+        if len(current_wagers) == 2:
+            p1_wager = current_wagers.get('Player1')
+            p2_wager = current_wagers.get('Player2')
+
+            # Handling a tie scenario
+            if p1_wager == p2_wager:
+                emit('game_update', {'message': 'It\'s a tie! Both players chose the same option.'}, broadcast=True)
+                current_wagers.clear()
+                emit('wager_reset', broadcast=True)
+
+            else:
+                winner = None
+                if (p1_wager == 'Rock' and p2_wager == 'Scissors') or (p1_wager == 'Paper' and p2_wager == 'Rock') or (p1_wager == 'Scissors' and p2_wager == 'Paper'):
+                    winner = 'Player1'
+                else:
+                    winner = 'Player2'
+                    loser = 'Player1'
+
+            emit('game_update', {'message': f'{winner} wins the RPS round!'}, broadcast=True)
+            current_wagers.clear()
+            emit('turn_start', {'turn': winner}, broadcast=True)
+
+
+
 @socketio.on('player_action')
 def handle_player_action(data):
     session_id = request.sid
@@ -113,29 +151,9 @@ def handle_player_action(data):
 
             emit('match_end', {'message': f'Match ended! {attacker} wins!'}, broadcast=True)
         
-        
-@socketio.on('submit_wager')
-def handle_wager(data):
-    session_id = request.sid
-    user_role = connected_players.get(session_id, 'Unknown')
-    
-    if user_role in ['Player1', 'Player2']:
-        wager = data.get('wager') # 'Rock', 'Paper', or 'Scissors'
-        
-        # Save their bet in the vault
-        current_wagers[user_role] = wager
-        print(f"{user_role} locked in a blind wager.")
-        
-        # Tell their specific frontend that the bet was received
-        emit('wager_received', {'message': 'Wager locked! Waiting for opponent...'}, to=session_id)
-        
-        if len(current_wagers) == 2:
-            print(f"Clash ready! P1: {current_wagers.get('Player1')} vs P2: {current_wagers.get('Player2')}")
-            
-            # math here later to determine
-            
-            # Clear the vault for the next round
-            current_wagers.clear()
+        else:
+            emit('wager_reset', broadcast=True)
+
 
 @socketio.on('reset_game')
 def handle_reset_game():
