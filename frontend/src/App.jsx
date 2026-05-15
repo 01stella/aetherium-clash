@@ -13,6 +13,9 @@ function App() {
   const [winner, setWinner] = useState(null)
   const [currentTurn, setCurrentTurn] = useState(null)
   const [wagerLocked, setWagerLocked] = useState(false)
+  const [currentHP, setCurrentHP] = useState({Player1: 0, Player2: 0})
+  const [maxHP, setMaxHP] = useState({Player1: 0, Player2: 0})
+  const [playerSP, setPlayerSP] = useState({Player1: 0, Player2: 0})
 
   useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -38,19 +41,37 @@ function App() {
       setLogs((prevLogs) => [...prevLogs, data.message])
     })
 
+    socket.on('hp_update', (data) => {
+      setCurrentHP(data.hp_data)
+    })
+
+    socket.on('sp_update', (data) => {
+      setPlayerSP(data.sp_data)
+    })
+
     socket.on('match_start', (data) => {
       setGameStarted(true)
+      setCurrentHP(data.hp_data)
+      setMaxHP(data.hp_data)
+      setPlayerSP(data.sp_data)
       setLogs((prevLogs) => [...prevLogs, data.message, 'The match has started!'])
     })
 
     socket.on('match_end', (data) => {
-      setWinner(data.message.split('!')[0]) // Extract the winner's name
+      setWinner(data.winner) // Extract the winner's name
     })
 
     socket.on('game_reset', () => {
       setGameStarted(false)
       setLockedCharacter(null)
       setWinner(null)
+
+      setCurrentTurn(null)
+      setWagerLocked(false)
+
+      setCurrentHP({Player1: 0, Player2: 0})
+      setPlayerSP({Player1: 0, Player2: 0})
+
       setLogs([])
     })
     // Clean up the socket connection on unmount
@@ -64,10 +85,6 @@ function App() {
       socket.off('wager_reset')
     }
   }, [])
-
-  const handleAttack = () => {
-    socket.emit('player_action', { attackType: 'Basic Attack' })
-  }
 
   const handleSelectCharacter = (character) => {
     socket.emit('character_selection', { character })
@@ -127,10 +144,30 @@ function App() {
         {/* PHASE 2: WON RPS, GAIN TURN */}
         {currentTurn === playerRole && (
           <div>
-            <h2>You won the RPS! You gain a turn.</h2>
-            <button onClick={handleAttack}>Basic Attack</button>
+            <h2>You won the RPS! Choose your action.</h2>
+
+              {/* Display current HP and SP */}
+                <p>HP: {currentHP[playerRole]}</p>
+                <h3 style={{ color: '#ffd708', marginTop: '0'}}
+                >SP: {playerSP[playerRole]} / 5</h3>
+
+              <div style ={{ display: 'flex', gap: '10px' }}>
+
+              {/* Basic Attack Button */}
+              <button onClick={() => socket.emit('player_action', { attack_type: 'Basic' })} 
+              style = {{ padding: '10px 20px', backgroundColor: 'red', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                Basic Attack (+1 SP)
+              </button>
+
+              {/* SKILL  Button (disabled when 0 SP) */}
+              <button onClick={() => socket.emit('player_action', { attack_type: 'Skill' })} disabled={playerSP[playerRole] < 2}
+              style={{ padding: '10px 20px', backgroundColor: playerSP[playerRole] >= 2 ? 'blue' : 'gray', color: 'white', border: 'none', borderRadius: '5px', 
+              cursor: playerSP[playerRole] >= 2 ? 'pointer' : 'not-allowed', opacity: playerSP[playerRole] < 2 ? 0.5 : 1 }}>
+                Skill Attack (-2 SP)
+              </button>
+            </div>
           </div>
-        )}
+        )} 
 
         {/* PHASE 3: LOST RPS */}
         {currentTurn && currentTurn !== playerRole && (

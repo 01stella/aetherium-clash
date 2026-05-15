@@ -12,11 +12,12 @@ connected_players = {}
 player_characters = {} # tracks who picks what character
 current_wagers = {} # RPS choice tracker
 current_hp = {}
+current_sp = {} # tracking skill points to trigger skill
 
 CHARACTER_STATS = { # for testing purposes hp is lowered
-    'Aha': {'hp': 400, 'dmg': 130, 'speed': 60}, # original hp 1000
-    'Lan': {'hp': 550, 'dmg': 100, 'speed': 80}, # original hp 1250
-    'Yaoshi': {'hp': 700, 'dmg': 80, 'speed': 40}, # original hp 1800
+    'Aha': {'hp': 400, 'dmg': 130, 'skill_dmg': 170}, # original hp 1000
+    'Lan': {'hp': 550, 'dmg': 100, 'skill_dmg': 140}, # original hp 1250
+    'Yaoshi': {'hp': 700, 'dmg': 80, 'skill_dmg': 120}, # original hp 1800
 }
 
 
@@ -79,9 +80,13 @@ def handle_character_selection(data):
                 current_hp['Player1'] = CHARACTER_STATS[p1_char]['hp']
                 current_hp['Player2'] = CHARACTER_STATS[p2_char]['hp']
 
+                current_sp['Player1'] = 3
+                current_sp['Player2'] = 3
+
                 emit('match_start', {
                     'message': 'Match is starting!',
-                    'hp_data': current_hp }, broadcast=True)
+                    'hp_data': current_hp,
+                    'sp_data': current_sp }, broadcast=True)
         else:
             print(f"{user_role} attempted to select an invalid character: {character_name}")
     else:
@@ -119,9 +124,9 @@ def handle_wager(data):
                     winner = 'Player2'
                     loser = 'Player1'
 
-            emit('game_update', {'message': f'{winner} wins the RPS round!'}, broadcast=True)
-            current_wagers.clear()
-            emit('turn_start', {'turn': winner}, broadcast=True)
+                emit('game_update', {'message': f'{winner} wins the RPS round!'}, broadcast=True)
+                current_wagers.clear()
+                emit('turn_start', {'turn': winner}, broadcast=True)
 
 
 
@@ -132,24 +137,39 @@ def handle_player_action(data):
 
     if attacker in ['Player1', 'Player2']:
         defender = 'Player2' if attacker == 'Player1' else 'Player1'
+        attack_type = data.get('attack_type') # 'Basic' or 'Skill'
 
         if current_hp.get(attacker, 0) <= 0 or current_hp.get(defender, 0) <= 0:
             return
 
         attacker_char = player_characters.get(attacker)
-        damager = CHARACTER_STATS[attacker_char]['dmg']
+        
+        if attack_type == 'Skill':
+            if current_sp.get(attacker, 0) < 2:
+                return
+            
+            damagePoints = CHARACTER_STATS[attacker_char]['skill_dmg']
+            current_sp[attacker] -= 2
+            action_desc = 'used their SKILL'
+        else:
+            damagePoints = CHARACTER_STATS[attacker_char]['dmg']
+            if current_sp.get(attacker, 0) < 5:
+                current_sp[attacker] += 1
+            action_desc = 'performed a BASIC attack'
 
-        current_hp[defender] -= damager
-
+        current_hp[defender] -= damagePoints
         if current_hp[defender] < 0:
             current_hp[defender] = 0
+        
+        emit('hp_update', {'hp_data': current_hp}, broadcast=True)
+        emit('sp_update', {'sp_data': current_sp}, broadcast=True)
 
-        emit('game_update', {'message': f'{attacker} ({attacker_char}) performed an action: {data} and dealt {damager} damage!'}, broadcast=True)
+        emit('game_update', {'message': f'{attacker} {action_desc} and dealt {damagePoints} damage! {defender} has {current_hp[defender]} HP remaining.'}, broadcast=True)
 
         if current_hp[defender] == 0:
             emit ('game_update', {'message': f'{defender} has been defeated! {attacker} wins!'}, broadcast=True)
 
-            emit('match_end', {'message': f'Match ended! {attacker} wins!'}, broadcast=True)
+            emit('match_end', {'message': f'Match ended! {attacker} wins!', 'winner': attacker}, broadcast=True)
         
         else:
             emit('wager_reset', broadcast=True)
@@ -162,6 +182,7 @@ def handle_reset_game():
     player_characters.clear()
     current_hp.clear()
     current_wagers.clear()
+    current_sp.clear()
 
     emit ('game_reset', {'message': 'Game state has been reset!'}, broadcast=True)
     
