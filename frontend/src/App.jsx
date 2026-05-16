@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 const socket = io('http://localhost:5000');
 
 function App() {
+  const [actionDelay, setActionDelay] = useState(false)
   const [playerRole, setPlayerRole] = useState('Connecting...')
   const [logs, setLogs] = useState([])
   const logsEndRef = useRef(null)
@@ -29,6 +30,11 @@ function App() {
     socket.on('turn_start', (data) => {
       setCurrentTurn(data.turn)
       setWagerLocked(false) // Unlock wagers at the start of each turn
+
+      setActionDelay(true) 
+      setTimeout(() => {
+        setActionDelay(false)
+      }, 2000) // 2 second delay before allowing actions
     })
 
     socket.on('wager_reset', () => {
@@ -144,30 +150,46 @@ function App() {
         {/* PHASE 2: WON RPS, GAIN TURN */}
         {currentTurn === playerRole && (
           <div>
-            <h2>You won the RPS! Choose your action.</h2>
+            {!actionDelay ? (
+              <div>
+                <h2 style={{ color: 'green' }}> Resolving clash...</h2>
+                <p>Check battle logs!</p>
+              </div>
+            ) : (
+              <>
+                <h2>You won the RPS! Choose your action.</h2>
 
-              {/* Display current HP and SP */}
+                {/* Display current HP and SP */}
                 <p>HP: {currentHP[playerRole]}</p>
                 <h3 style={{ color: '#ffd708', marginTop: '0'}}
                 >SP: {playerSP[playerRole]} / 5</h3>
 
-              <div style ={{ display: 'flex', gap: '10px' }}>
+                <div style ={{ display: 'flex', gap: '10px' }}>
 
-              {/* Basic Attack Button */}
-              <button onClick={() => socket.emit('player_action', { attack_type: 'Basic' })} 
-              style = {{ padding: '10px 20px', backgroundColor: 'red', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
-                Basic Attack (+1 SP)
-              </button>
+                {/* Basic Attack Button */}
+                <button onClick={() => socket.emit('player_action', { attack_type: 'Basic' })} 
+                style = {{ padding: '10px 20px', backgroundColor: 'red', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                  Basic Attack (+1 SP)
+                </button>
 
-              {/* SKILL  Button (disabled when 0 SP) */}
-              <button onClick={() => socket.emit('player_action', { attack_type: 'Skill' })} disabled={playerSP[playerRole] < 2}
-              style={{ padding: '10px 20px', backgroundColor: playerSP[playerRole] >= 2 ? 'blue' : 'gray', color: 'white', border: 'none', borderRadius: '5px', 
-              cursor: playerSP[playerRole] >= 2 ? 'pointer' : 'not-allowed', opacity: playerSP[playerRole] < 2 ? 0.5 : 1 }}>
-                Skill Attack (-2 SP)
-              </button>
-            </div>
-          </div>
-        )} 
+                {/* SKILL  Button (disabled when 0 SP) */}
+                <button onClick={() => socket.emit('player_action', { attack_type: 'Skill' })} disabled={playerSP[playerRole] < 2}
+                style={{ padding: '10px 20px', backgroundColor: playerSP[playerRole] >= 2 ? 'blue' : 'gray', color: 'white', border: 'none', borderRadius: '5px', 
+                cursor: playerSP[playerRole] >= 2 ? 'pointer' : 'not-allowed', opacity: playerSP[playerRole] < 2 ? 0.5 : 1 }}>
+                  Skill Attack (-2 SP)
+                </button>
+
+                {/* Heal Button (disabled when 0 SP) */}
+                <button onClick={() => socket.emit('player_action', { attack_type: 'Heal' })} disabled={playerSP[playerRole] < 2}
+                style={{ padding: '10px 20px', backgroundColor: playerSP[playerRole] >= 2 ? 'green' : 'gray', color: 'white', border: 'none', borderRadius: '5px', 
+                cursor: playerSP[playerRole] >= 2 ? 'pointer' : 'not-allowed', opacity: playerSP[playerRole] < 2 ? 0.5 : 1 }}>
+                  Heal (-2 SP)
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )} 
 
         {/* PHASE 3: LOST RPS */}
         {currentTurn && currentTurn !== playerRole && (

@@ -1,6 +1,7 @@
 from flask import Flask, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
+import random
 
 app = Flask(__name__)
 CORS(app)
@@ -13,12 +14,26 @@ player_characters = {} # tracks who picks what character
 current_wagers = {} # RPS choice tracker
 current_hp = {}
 current_sp = {} # tracking skill points to trigger skill
+loss_streaks = {} # tracks consecutive rps losses
+used_revive = {} # tracks if Yaoshi used this instance once
 
-CHARACTER_STATS = { # for testing purposes hp is lowered
-    'Aha': {'hp': 400, 'dmg': 130, 'skill_dmg': 170}, # original hp 1000
-    'Lan': {'hp': 550, 'dmg': 100, 'skill_dmg': 140}, # original hp 1250
-    'Yaoshi': {'hp': 700, 'dmg': 80, 'skill_dmg': 120}, # original hp 1800
+CHARACTER_STATS = { # for testing purposes everything is nerfed
+    'Aha': {'hp': 450, 'dmg': 50, 'skill_dmg': 150}, 
+    'Lan': {'hp': 350, 'dmg': 70, 'skill_dmg': 180}, 
+    'Yaoshi': {'hp': 550, 'dmg': 40, 'skill_dmg': 120}, 
 }
+
+# [ORIGINAL STATS]
+# CHARACTER_STATS = { # 
+#     'Aha': {'hp': 950, 'dmg': 100, 'skill_dmg': 240}, 
+#     'Lan': {'hp': 750, 'dmg': 150, 'skill_dmg': 300}, 
+#     'Yaoshi': {'hp': 1200, 'dmg': 90, 'skill_dmg': 180}, 
+# }
+
+# CHARACTER PASSIVES
+# Aha: Every BA triggers a coin flip. Heads: 2x dmg, +1 SP. Tails: 1 dmg, +2 SP
+# Lan: For every 1 SP you have, deal 10% more damage (for both Basic and Skill)
+# Yaoshi: Can heal even over max HP (max to 1500), if HP drops 0, revive with 1 HP and 2SP.
 
 
 @app.route('/')
@@ -83,6 +98,9 @@ def handle_character_selection(data):
                 current_sp['Player1'] = 3
                 current_sp['Player2'] = 3
 
+                loss_streaks['Player1'] = 0
+                loss_streaks['Player2'] = 0
+
                 emit('match_start', {
                     'message': 'Match is starting!',
                     'hp_data': current_hp,
@@ -120,11 +138,31 @@ def handle_wager(data):
                 winner = None
                 if (p1_wager == 'Rock' and p2_wager == 'Scissors') or (p1_wager == 'Paper' and p2_wager == 'Rock') or (p1_wager == 'Scissors' and p2_wager == 'Paper'):
                     winner = 'Player1'
+                    loser = 'Player2'
                 else:
                     winner = 'Player2'
                     loser = 'Player1'
+                
+                loss_streaks[winner] = 0
+                loss_streaks[loser] = loss_streaks.get(loser, 0) + 1
 
                 emit('game_update', {'message': f'{winner} wins the RPS round!'}, broadcast=True)
+
+                if loss_streaks[loser] == 3:
+                    heal_amount = 250
+                    loser_char = player_characters[loser]
+                    max_hp = CHARACTER_STATS[loser_char]['hp']
+
+                    # pity heal but cap at max hp
+                    current_hp[loser] += heal_amount
+                    if current_hp[loser] > max_hp:
+                        current_hp[loser] = max_hp
+                    
+                    loss_streaks[loser] = 0
+
+                    emit('hp_update', {'hp_data': current_hp}, broadcast=True)
+                    emit('game_update', {'message': f"{loser}'s COMEBACK! Got instant heal of 250 HP!"}, broadcast=True)
+
                 current_wagers.clear()
                 emit('turn_start', {'turn': winner}, broadcast=True)
 
@@ -143,28 +181,116 @@ def handle_player_action(data):
             return
 
         attacker_char = player_characters.get(attacker)
+        defender_char = player_characters.get(defender)
+
+        action_desc = ''
+        damagePoints = 0
+        sp_gain = 0
         
+        # ||| SKILL ATTACK |||
         if attack_type == 'Skill':
             if current_sp.get(attacker, 0) < 2:
                 return
             
             damagePoints = CHARACTER_STATS[attacker_char]['skill_dmg']
+            
+            # LAN'S PASSIVE (SKILL VERSION)
+            if attacker_char == 'Lan':
+                current_sp_bank = current_sp.get(attacker, 0)
+                multiplier = 1.0 + (current_sp_bank * 0.10)
+                damagePoints = int(damagePoints * multiplier)
+                action_desc = f'triggered CHARGED LUX ARROW with {int(current_sp_bank)} SP, dealing {damagePoints} damage'
+            else:
+                    action_desc = 'used their SKILL'
             current_sp[attacker] -= 2
-            action_desc = 'used their SKILL'
+
+        # ||| HEAL |||
+        elif attack_type == 'Heal':
+            # Heal costs 2 SP and restores 150 HP
+            if current_sp.get(attacker, 0) < 2:
+                return
+            
+            heal_amount = 150
+            current_sp[attacker] -= 2
+
+            max_hp = CHARACTER_STATS[attacker_char]['hp']
+            current_hp[attacker] += heal_amount
+
+            # YAOSHI'S PASSIVE
+            if attacker_char == 'Yaoshi':
+                if current_hp[attacker] > 850: # !!!!!!! CHANGE THIS LATER !!!!!!
+                    current_hp[attacker] = 850
+
+                if current_hp[attacker] > 550:
+                    action_desc = f'triggered OVERHEAL and restored {heal_amount} HP, exceeding max HP!'
+                else:
+                    action_desc = f'used HEAL and restored {heal_amount} HP!'
+            
+            else:
+                if current_hp[attacker] > max_hp:
+                    current_hp[attacker] = max_hp
+                action_desc = f'used HEAL and restored {heal_amount} HP!'
+        
+        # ||| BASIC ATTACK |||
         else:
             damagePoints = CHARACTER_STATS[attacker_char]['dmg']
-            if current_sp.get(attacker, 0) < 5:
-                current_sp[attacker] += 1
-            action_desc = 'performed a BASIC attack'
+            sp_gain = 1
 
-        current_hp[defender] -= damagePoints
-        if current_hp[defender] < 0:
-            current_hp[defender] = 0
+            # AHA'S PASSIVE
+            if attacker_char == 'Aha':
+                if random.random() < 0.5:
+                    damagePoints *= 2
+                    action_desc = f'flipped HEADS, gained 2x multiplier'
+                else:
+                    damagePoints = 1
+                    sp_gain = 2
+                    action_desc = f'flipped TAILS and dealt only 1 damage but gained +2 SP'
+            
+            # LAN'S PASSIVE (BASIC VERSION)
+            elif attacker_char == 'Lan':
+                current_sp_bank = current_sp.get(attacker, 0)
+                multiplier = 1.0 + (current_sp_bank * 0.10)
+                damagePoints = int(damagePoints * multiplier)
+                if current_sp_bank > 0:
+                    action_desc = f'triggered CHARGED ARROW with {int(current_sp_bank)} SP, dealing {damagePoints} damage'
+                
+                else: 
+                    action_desc = 'used their BASIC attack'
+
+            else:
+                action_desc = 'used their BASIC attack'
+            
+            if current_sp.get(attacker, 0) + sp_gain <= 5:
+                current_sp[attacker] += sp_gain
+            else:
+                current_sp[attacker] = 5
         
+        if attack_type != 'Heal':
+            current_hp[defender] -= damagePoints
+            
+            # YAOSHI'S PASSIVE REVIVE
+            if current_hp[defender] <= 0:
+                if defender_char == 'Yaoshi' and not used_revive.get(defender, False):
+                    current_hp[defender] = 1
+                    current_sp[defender] = min(current_sp.get(defender, 0) + 2, 5) # add 2 cap at 5
+                    used_revive[defender] = True
+                    revive_message = f"{defender} triggered REVIVE! Revived with 1 HP and gained 2 SP!"
+                else:
+                    current_hp[defender] = 0
+        
+            
         emit('hp_update', {'hp_data': current_hp}, broadcast=True)
         emit('sp_update', {'sp_data': current_sp}, broadcast=True)
 
-        emit('game_update', {'message': f'{attacker} {action_desc} and dealt {damagePoints} damage! {defender} has {current_hp[defender]} HP remaining.'}, broadcast=True)
+        if attack_type == 'Heal':
+            emit('game_update', {'message': f'{attacker} {action_desc}! {attacker} now has {current_hp[attacker]} HP.'}, broadcast=True)
+        else:
+            # announcing attack message first
+            emit('game_update', {'message': f'{attacker} {action_desc} and dealt {damagePoints} damage! {defender} has {current_hp[defender]} HP remaining.'}, broadcast=True)
+            
+            # announcing revive message AFTER if applicable
+            if revive_message:
+                emit('game_update', {'message': revive_message}, broadcast=True)
 
         if current_hp[defender] == 0:
             emit ('game_update', {'message': f'{defender} has been defeated! {attacker} wins!'}, broadcast=True)
@@ -183,6 +309,8 @@ def handle_reset_game():
     current_hp.clear()
     current_wagers.clear()
     current_sp.clear()
+    used_revive.clear()
+    loss_streaks.clear()
 
     emit ('game_reset', {'message': 'Game state has been reset!'}, broadcast=True)
     
