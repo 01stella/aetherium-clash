@@ -17,12 +17,29 @@ function App() {
   const [currentHP, setCurrentHP] = useState({Player1: 0, Player2: 0})
   const [maxHP, setMaxHP] = useState({Player1: 0, Player2: 0})
   const [playerSP, setPlayerSP] = useState({Player1: 0, Player2: 0})
+  const [matchCharacters, setMatchCharacters] = useState({Player1: '', Player2: ''})
 
   useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
   
   useEffect(() => {
+    let hasConnectedBefore = false; // Track if the client has connected before
+
+    socket.on('connect', () => {
+      if (hasConnectedBefore) {
+        console.log("Backend restart detected, refreshing page..")
+        socket.disconnect() // Disconnect the current socket connection
+
+        setTimeout(() => {
+          window.location.reload() // Refresh the page on backend restart
+        }, 200); // Add a small delay before refreshing
+      } else {
+        // first time connecting
+        hasConnectedBefore = true; 
+      }
+    });
+
     socket.on('role_assignment', (data) => {
       setPlayerRole(data.role)
     })
@@ -60,6 +77,7 @@ function App() {
       setCurrentHP(data.hp_data)
       setMaxHP(data.hp_data)
       setPlayerSP(data.sp_data)
+      setMatchCharacters(data.character_data)
       setLogs((prevLogs) => [...prevLogs, data.message, 'The match has started!'])
     })
 
@@ -71,6 +89,7 @@ function App() {
       setGameStarted(false)
       setLockedCharacter(null)
       setWinner(null)
+      setMatchCharacters({Player1: '', Player2: ''})
 
       setCurrentTurn(null)
       setWagerLocked(false)
@@ -82,6 +101,7 @@ function App() {
     })
     // Clean up the socket connection on unmount
     return () => {
+      socket.off('connect')
       socket.off('role_assignment')
       socket.off('game_update')
       socket.off('match_start')
@@ -130,7 +150,23 @@ function App() {
       {/* COMBAT PHASE */}
       {playerRole !== 'Spectator' && gameStarted && !winner && (
         <div style={{ marginBottom: '20px' }}>
-          
+
+          {/* HP AND SP PERMANENT DISPLAY */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', background: '#222', padding: '15px', borderRadius: '10px', color: 'white', marginBottom: '20px', border: '2px solid #444' }}>
+            <div style={{textAlign: 'left'}}>
+              <h3>Player 1</h3>
+              <p>Character: {matchCharacters.Player1}</p>
+              <p>HP: {currentHP.Player1}</p>
+              <p>SP: {playerSP.Player1} / 5</p>
+            </div>
+            <div style={{textAlign: 'right'}}>
+              <h3>Player 2</h3>
+              <p>Character: {matchCharacters.Player2}</p>
+              <p>HP: {currentHP.Player2}</p>
+              <p>SP: {playerSP.Player2} / 5</p>
+            </div>
+          </div>
+
           {/* PHASE 1: RPS */}
           {!currentTurn && (
             <div>
@@ -150,7 +186,7 @@ function App() {
         {/* PHASE 2: WON RPS, GAIN TURN */}
         {currentTurn === playerRole && (
           <div>
-            {!actionDelay ? (
+            {actionDelay ? (
               <div>
                 <h2 style={{ color: 'green' }}> Resolving clash...</h2>
                 <p>Check battle logs!</p>
@@ -158,11 +194,6 @@ function App() {
             ) : (
               <>
                 <h2>You won the RPS! Choose your action.</h2>
-
-                {/* Display current HP and SP */}
-                <p>HP: {currentHP[playerRole]}</p>
-                <h3 style={{ color: '#ffd708', marginTop: '0'}}
-                >SP: {playerSP[playerRole]} / 5</h3>
 
                 <div style ={{ display: 'flex', gap: '10px' }}>
 
