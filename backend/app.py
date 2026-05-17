@@ -68,6 +68,13 @@ def handle_disconnect():
     if session_id in connected_players:
         role = connected_players.pop(session_id)
         print(f"{session_id} disconnected from role {role}")
+
+        if role in player_characters:
+            del player_characters[role]
+        if role in current_wagers:
+            del current_wagers[role]
+        
+        emit('game_reset', {'message': f'{role} has disconnected. Game state reset.'}, broadcast=True)
         print(f"Current connected players: {connected_players}")
 
 @socketio.on('character_selection')
@@ -186,6 +193,7 @@ def handle_player_action(data):
     if attacker in ['Player1', 'Player2']:
         defender = 'Player2' if attacker == 'Player1' else 'Player1'
         attack_type = data.get('attack_type') # 'Basic' or 'Skill'
+        combo_multiplier = data.get('combo_multiplier', 1) # default to 1 if not provided
 
         if current_hp.get(attacker, 0) <= 0 or current_hp.get(defender, 0) <= 0:
             return
@@ -204,7 +212,7 @@ def handle_player_action(data):
                 return
             
             damagePoints = CHARACTER_STATS[attacker_char]['skill_dmg']
-            
+            damagePoints = int(damagePoints * combo_multiplier)
             # AHA'S PASSIVE (SKILL VERSION)
             if attacker_char == 'Aha':
                 if random.random() < 0.5:

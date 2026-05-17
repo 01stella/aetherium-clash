@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, use } from 'react';
 import { io } from 'socket.io-client';
+import CombatHUD from './components/combatHUD';
+import Arena from './components/arena';
+import ComboAttack from './components/comboAttack';
 
 // Connecting to backend
 const socket = io('http://localhost:5000');
@@ -18,9 +21,10 @@ function App() {
   const [maxHP, setMaxHP] = useState({Player1: 0, Player2: 0})
   const [playerSP, setPlayerSP] = useState({Player1: 0, Player2: 0})
   const [matchCharacters, setMatchCharacters] = useState({Player1: '', Player2: ''})
+  const [comboActive, setComboActive] = useState(false)
 
   useEffect(() => {
-        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        logsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest'})
   }, [logs])
   
   useEffect(() => {
@@ -121,6 +125,11 @@ function App() {
     socket.emit('reset_game')
   }
 
+  const handleComboComplete = (multiplier) => {
+    setComboActive(false)
+    socket.emit('player_action', { attack_type: 'Skill', combo_multiplier: multiplier })
+  }
+
   return (
     <div style={{ padding: '20px' }}>
       <h1>Aetherium Clash</h1>
@@ -149,39 +158,13 @@ function App() {
 
       {/* COMBAT PHASE */}
       {playerRole !== 'Spectator' && gameStarted && !winner && (
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ backgroundColor: '#2b2d42', borderRadius: '10px', padding: '20px', border: '2px solid #444', boxShadow: '0 0 10px rgba(0, 0, 0, 0.5)', maxWidth: '1000px', margin: '0 auto' }}>
 
-          {/* HP AND SP PERMANENT DISPLAY */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', background: '#222', padding: '15px', borderRadius: '10px', color: 'white', marginBottom: '20px', border: '2px solid #444' }}>
-            <div style={{textAlign: 'left'}}>
-              <h3>Player 1</h3>
-              <p>Character: {matchCharacters.Player1}</p>
-              <p>HP: {currentHP.Player1}</p>
-              <p>SP: {playerSP.Player1} / 5</p>
-            </div>
-            <div style={{textAlign: 'right'}}>
-              <h3>Player 2</h3>
-              <p>Character: {matchCharacters.Player2}</p>
-              <p>HP: {currentHP.Player2}</p>
-              <p>SP: {playerSP.Player2} / 5</p>
-            </div>
-          </div>
+          {/* PLAYER HUD */}
+          <CombatHUD playerRole={playerRole} currentHP={currentHP} playerSP={playerSP} matchCharacters={matchCharacters} />
 
-          {/* PHASE 1: RPS */}
-          {!currentTurn && (
-            <div>
-              <h2>Rock, Paper, Scissors Phase</h2>
-              {wagerLocked ? (
-                <p>Waiting for opponent to make a move...</p>
-              ) : (
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => { socket.emit('submit_wager', { wager: 'Rock' }); setWagerLocked(true); }}>Rock</button>
-                  <button onClick={() => { socket.emit('submit_wager', { wager: 'Paper' }); setWagerLocked(true); }}>Paper</button>
-                  <button onClick={() => { socket.emit('submit_wager', { wager: 'Scissors' }); setWagerLocked(true); }}>Scissors</button>
-              </div>
-            )}
-          </div>
-        )}
+          {/* ARENA COMPONENT */}
+          <Arena socket={socket} playerRole={playerRole} matchCharacters={matchCharacters} currentTurn={currentTurn} wagerLocked={wagerLocked} setWagerLocked={setWagerLocked} />
 
         {/* PHASE 2: WON RPS, GAIN TURN */}
         {currentTurn === playerRole && (
@@ -191,6 +174,8 @@ function App() {
                 <h2 style={{ color: 'green' }}> Resolving clash...</h2>
                 <p>Check battle logs!</p>
               </div>
+            ) : comboActive ? (
+              <ComboAttack onComplete={handleComboComplete} />
             ) : (
               <>
                 <h2>You won the RPS! Choose your action.</h2>
@@ -204,7 +189,7 @@ function App() {
                 </button>
 
                 {/* SKILL  Button (disabled when 0 SP) */}
-                <button onClick={() => socket.emit('player_action', { attack_type: 'Skill' })} disabled={playerSP[playerRole] < 2}
+                <button onClick={() => setComboActive(true)} disabled={playerSP[playerRole] < 2}
                 style={{ padding: '10px 20px', backgroundColor: playerSP[playerRole] >= 2 ? 'blue' : 'gray', color: 'white', border: 'none', borderRadius: '5px', 
                 cursor: playerSP[playerRole] >= 2 ? 'pointer' : 'not-allowed', opacity: playerSP[playerRole] < 2 ? 0.5 : 1 }}>
                   Skill Attack (-2 SP)
